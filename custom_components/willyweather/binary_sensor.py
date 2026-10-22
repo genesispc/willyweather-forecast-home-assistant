@@ -78,6 +78,9 @@ class WillyWeatherWarningBinarySensor(CoordinatorEntity, BinarySensorEntity):
     """Implementation of a WillyWeather warning binary sensor."""
 
     _attr_attribution = ATTRIBUTION
+    # Warning text can run to a few KB; keep it in the live state but out of
+    # the recorder database.
+    _unrecorded_attributes = frozenset({"content_text", "warnings"})
 
     def __init__(
         self,
@@ -185,6 +188,7 @@ class WillyWeatherWarningBinarySensor(CoordinatorEntity, BinarySensorEntity):
             "warning_count": 0,
             "code": None,
             "name": None,
+            "content_text": None,
             "warnings": [],
         }
         
@@ -252,12 +256,21 @@ class WillyWeatherWarningBinarySensor(CoordinatorEntity, BinarySensorEntity):
                                 if expire_time > now:
                                     _LOGGER.debug("Adding active warning: %s", warning.get("name"))
                                     
+                                    content = warning.get("content") or {}
+                                    data_points = warning.get("warningDataPoints") or []
                                     active_warnings.append({
                                         "code": warning.get("code"),
                                         "name": warning.get("name"),
                                         "issue_time": warning.get("issueDateTime"),
                                         "expire_time": expire_time_str,
                                         "warning_type": warning_type.get("name"),
+                                        "warning_type_code": warning_type.get("code"),
+                                        "content_text": (content.get("text") or "").strip() or None,
+                                        "areas": [
+                                            point.get("name")
+                                            for point in data_points
+                                            if isinstance(point, dict) and point.get("name")
+                                        ],
                                     })
                         except (ValueError, TypeError) as err:
                             _LOGGER.debug("Error parsing warning time: %s", err)
@@ -275,6 +288,7 @@ class WillyWeatherWarningBinarySensor(CoordinatorEntity, BinarySensorEntity):
                 "warning_count": len(active_warnings),
                 "code": first_warning.get("code"),
                 "name": first_warning.get("name"),
+                "content_text": first_warning.get("content_text"),
                 "warnings": active_warnings,
             }
             
